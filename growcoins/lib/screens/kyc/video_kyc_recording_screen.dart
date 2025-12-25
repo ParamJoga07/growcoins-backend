@@ -89,27 +89,8 @@ class _VideoKycRecordingScreenState extends State<VideoKycRecordingScreen> {
           _isPermissionGranted = false;
         });
         
-        if (mounted) {
-          String message = 'Camera and microphone permissions are required for video KYC.';
-          if (finalCameraStatus.isPermanentlyDenied || finalMicrophoneStatus.isPermanentlyDenied) {
-            message = 'Permissions are permanently denied. Please enable them in Settings.';
-          }
-          
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(message),
-              backgroundColor: AppTheme.errorColor,
-              duration: const Duration(seconds: 5),
-              action: SnackBarAction(
-                label: 'Settings',
-                textColor: Colors.white,
-                onPressed: () async {
-                  await openAppSettings();
-                },
-              ),
-            ),
-          );
-        }
+        // Don't show snackbar here - the UI will show the permission prompt
+        debugPrint('Permissions not granted. Camera: $finalCameraStatus, Microphone: $finalMicrophoneStatus');
       }
     } catch (e) {
       debugPrint('Error requesting permissions: $e');
@@ -268,74 +249,116 @@ class _VideoKycRecordingScreenState extends State<VideoKycRecordingScreen> {
   }
 
   Widget _buildPermissionPrompt() {
-    return Container(
-      color: Colors.black,
-      child: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                Icons.camera_alt_outlined,
-                size: 64,
-                color: Colors.white.withOpacity(0.7),
-              ),
-              const SizedBox(height: 24),
-              Text(
-                'Camera Permission Required',
-                style: AppTheme.headingMedium.copyWith(
-                  color: Colors.white,
-                ),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 12),
-              Text(
-                'We need access to your camera and microphone to record your video KYC',
-                style: AppTheme.bodyMedium.copyWith(
-                  color: Colors.white.withOpacity(0.8),
-                ),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 32),
-              ElevatedButton(
-                onPressed: () async {
-                  // Try requesting permissions again
-                  await _initializeCamera();
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppTheme.primaryColor,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 32,
-                    vertical: 16,
+    return FutureBuilder<Map<Permission, PermissionStatus>>(
+      future: Future.wait([
+        Permission.camera.status,
+        Permission.microphone.status,
+      ]).then((statuses) => {
+        Permission.camera: statuses[0],
+        Permission.microphone: statuses[1],
+      }),
+      builder: (context, snapshot) {
+        final cameraStatus = snapshot.data?[Permission.camera] ?? PermissionStatus.denied;
+        final micStatus = snapshot.data?[Permission.microphone] ?? PermissionStatus.denied;
+        final isPermanentlyDenied = cameraStatus.isPermanentlyDenied || micStatus.isPermanentlyDenied;
+
+        return Container(
+          color: Colors.black,
+          child: Center(
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    isPermanentlyDenied ? Icons.settings_outlined : Icons.camera_alt_outlined,
+                    size: 64,
+                    color: Colors.white.withOpacity(0.7),
                   ),
-                ),
-                child: const Text('Request Permissions'),
-              ),
-              const SizedBox(height: 12),
-              OutlinedButton(
-                onPressed: () async {
-                  try {
-                    await openAppSettings();
-                  } catch (e) {
-                    debugPrint('Error opening app settings: $e');
-                  }
-                },
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: Colors.white,
-                  side: const BorderSide(color: Colors.white, width: 1.5),
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 32,
-                    vertical: 16,
+                  const SizedBox(height: 24),
+                  Text(
+                    isPermanentlyDenied
+                        ? 'Permissions Required in Settings'
+                        : 'Camera Permission Required',
+                    style: AppTheme.headingMedium.copyWith(
+                      color: Colors.white,
+                    ),
+                    textAlign: TextAlign.center,
                   ),
-                ),
-                child: const Text('Open Settings'),
+                  const SizedBox(height: 12),
+                  Text(
+                    isPermanentlyDenied
+                        ? 'Camera and microphone permissions were denied. Please enable them in your device Settings to continue with video KYC.'
+                        : 'We need access to your camera and microphone to record your video KYC',
+                    style: AppTheme.bodyMedium.copyWith(
+                      color: Colors.white.withOpacity(0.8),
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 32),
+                  if (!isPermanentlyDenied)
+                    ElevatedButton(
+                      onPressed: () async {
+                        // Try requesting permissions again
+                        await _initializeCamera();
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppTheme.primaryColor,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 32,
+                          vertical: 16,
+                        ),
+                      ),
+                      child: const Text('Request Permissions'),
+                    ),
+                  if (isPermanentlyDenied) ...[
+                    ElevatedButton.icon(
+                      onPressed: () async {
+                        try {
+                          final opened = await openAppSettings();
+                          debugPrint('Settings opened: $opened');
+                        } catch (e) {
+                          debugPrint('Error opening app settings: $e');
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text('Please go to Settings > Growcoins > Camera & Microphone'),
+                                backgroundColor: AppTheme.errorColor,
+                                duration: const Duration(seconds: 5),
+                              ),
+                            );
+                          }
+                        }
+                      },
+                      icon: const Icon(Icons.settings, size: 20),
+                      label: const Text('Open Settings'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppTheme.primaryColor,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 32,
+                          vertical: 16,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    TextButton(
+                      onPressed: () => Navigator.pop(context),
+                      child: Text(
+                        'Cancel',
+                        style: AppTheme.bodyMedium.copyWith(
+                          color: Colors.white.withOpacity(0.8),
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
               ),
-            ],
+            ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 
