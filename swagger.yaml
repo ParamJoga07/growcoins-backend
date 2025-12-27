@@ -1,0 +1,1767 @@
+openapi: 3.0.0
+info:
+  title: Growcoins Backend API
+  version: 1.0.0
+  description: |
+    Comprehensive API documentation for Growcoins fintech application.
+    This API provides endpoints for user management, goals, investments, savings, and more.
+  contact:
+    name: Growcoins API Support
+    email: support@growcoins.com
+
+servers:
+  - url: http://localhost:3001
+    description: Development server
+  - url: https://api.growcoins.com
+    description: Production server
+
+tags:
+  - name: Health
+    description: Health check endpoints
+  - name: Authentication
+    description: User authentication and registration
+  - name: Users
+    description: User profile management
+  - name: Onboarding
+    description: User onboarding flow
+  - name: Risk Assessment
+    description: Risk profile assessment
+  - name: Goals
+    description: Financial goals management
+  - name: Investment Plan
+    description: Investment plan generation and management
+  - name: Mutual Funds
+    description: Mutual fund recommendations and search
+  - name: Savings
+    description: Savings and roundoff features
+  - name: Notifications
+    description: In-app notifications
+  - name: Video KYC
+    description: Video KYC submission and management
+  - name: Invest
+    description: Investment profile management
+
+paths:
+  /health:
+    get:
+      tags:
+        - Health
+      summary: Health check
+      description: Check if the server and database are running
+      responses:
+        '200':
+          description: Server is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: OK
+                  message:
+                    type: string
+                    example: Server is running and database is connected
+                  timestamp:
+                    type: string
+                    format: date-time
+        '500':
+          description: Server or database error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/auth/register:
+    post:
+      tags:
+        - Authentication
+      summary: Register a new user
+      description: Create a new user account with authentication credentials
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - username
+                - password
+                - email
+                - first_name
+                - last_name
+              properties:
+                username:
+                  type: string
+                  minLength: 3
+                  example: johndoe
+                password:
+                  type: string
+                  minLength: 6
+                  example: password123
+                email:
+                  type: string
+                  format: email
+                  example: john@example.com
+                first_name:
+                  type: string
+                  example: John
+                last_name:
+                  type: string
+                  example: Doe
+                phone_number:
+                  type: string
+                  example: +1234567890
+                date_of_birth:
+                  type: string
+                  format: date
+                  example: '1990-01-01'
+      responses:
+        '201':
+          description: User registered successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: User registered successfully
+                  user_id:
+                    type: integer
+                    example: 1
+                  account_number:
+                    type: string
+                    example: GC1234567890
+        '400':
+          description: Validation error or user already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/auth/login:
+    post:
+      tags:
+        - Authentication
+      summary: User login
+      description: Authenticate user and return user data
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - username
+                - password
+              properties:
+                username:
+                  type: string
+                  example: johndoe
+                password:
+                  type: string
+                  example: password123
+      responses:
+        '200':
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: Login successful
+                  user:
+                    $ref: '#/components/schemas/User'
+        '401':
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Account deactivated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/auth/biometric/{userId}:
+    get:
+      tags:
+        - Authentication
+      summary: Get biometric preference
+      description: Get user's biometric authentication preference
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: integer
+          example: 1
+      responses:
+        '200':
+          description: Biometric preference retrieved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user_id:
+                    type: integer
+                  biometric_enabled:
+                    type: boolean
+        '404':
+          description: User not found
+    put:
+      tags:
+        - Authentication
+      summary: Update biometric preference
+      description: Update user's biometric authentication preference
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - biometric_enabled
+              properties:
+                biometric_enabled:
+                  type: boolean
+                  example: true
+      responses:
+        '200':
+          description: Biometric preference updated
+        '400':
+          description: Validation error
+        '404':
+          description: User not found
+
+  /api/users/profile/{id}:
+    get:
+      tags:
+        - Users
+      summary: Get user profile
+      description: Get complete user profile information
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          example: 1
+      responses:
+        '200':
+          description: User profile retrieved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  profile:
+                    $ref: '#/components/schemas/UserProfile'
+        '404':
+          description: User not found
+    put:
+      tags:
+        - Users
+      summary: Update user profile
+      description: Update user profile information
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                first_name:
+                  type: string
+                last_name:
+                  type: string
+                email:
+                  type: string
+                  format: email
+                phone_number:
+                  type: string
+                date_of_birth:
+                  type: string
+                  format: date
+                address:
+                  type: string
+                city:
+                  type: string
+                state:
+                  type: string
+                zip_code:
+                  type: string
+                country:
+                  type: string
+                profile_picture_url:
+                  type: string
+                pan_number:
+                  type: string
+                  pattern: '^[A-Z]{5}[0-9]{4}[A-Z]{1}$'
+                aadhar_number:
+                  type: string
+                  pattern: '^[0-9]{12}$'
+      responses:
+        '200':
+          description: Profile updated successfully
+        '400':
+          description: Validation error
+        '404':
+          description: User not found
+
+  /api/users/{id}/balance:
+    patch:
+      tags:
+        - Users
+      summary: Update account balance
+      description: Add, subtract, or set user account balance
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - amount
+                - operation
+              properties:
+                amount:
+                  type: number
+                  minimum: 0
+                  example: 1000
+                operation:
+                  type: string
+                  enum: [add, subtract, set]
+                  example: add
+      responses:
+        '200':
+          description: Balance updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  previous_balance:
+                    type: number
+                  new_balance:
+                    type: number
+        '400':
+          description: Validation error or insufficient balance
+        '404':
+          description: User not found
+
+  /api/onboarding/personal-details:
+    post:
+      tags:
+        - Onboarding
+      summary: Save personal details
+      description: Save user's personal information during onboarding
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - user_id
+                - full_legal_name
+                - email
+                - date_of_birth
+              properties:
+                user_id:
+                  type: integer
+                full_legal_name:
+                  type: string
+                email:
+                  type: string
+                  format: email
+                date_of_birth:
+                  type: string
+                  format: date
+      responses:
+        '200':
+          description: Personal details saved
+        '400':
+          description: Validation error
+        '404':
+          description: User not found
+
+  /api/onboarding/kyc-details:
+    post:
+      tags:
+        - Onboarding
+      summary: Save KYC details
+      description: Save user's KYC information (PAN and Aadhar)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - user_id
+                - pan_number
+                - aadhar_number
+              properties:
+                user_id:
+                  type: integer
+                pan_number:
+                  type: string
+                  pattern: '^[A-Z]{5}[0-9]{4}[A-Z]{1}$'
+                aadhar_number:
+                  type: string
+                  pattern: '^[0-9]{12}$'
+      responses:
+        '200':
+          description: KYC details saved
+        '400':
+          description: Validation error
+        '404':
+          description: User not found
+
+  /api/onboarding/status/{user_id}:
+    get:
+      tags:
+        - Onboarding
+      summary: Get onboarding status
+      description: Check user's onboarding completion status
+      parameters:
+        - name: user_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Onboarding status retrieved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  personal_details_completed:
+                    type: boolean
+                  kyc_details_completed:
+                    type: boolean
+                  kyc_status:
+                    type: string
+                    enum: [pending, submitted, verified, rejected]
+
+  /api/risk-assessment:
+    post:
+      tags:
+        - Risk Assessment
+      summary: Save risk assessment
+      description: Submit user's risk assessment answers and get risk profile
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - user_id
+                - answers
+                - total_score
+                - risk_profile
+              properties:
+                user_id:
+                  type: integer
+                answers:
+                  type: array
+                  minItems: 5
+                  maxItems: 5
+                  items:
+                    type: object
+                    properties:
+                      questionId:
+                        type: integer
+                      optionId:
+                        type: string
+                      answerText:
+                        type: string
+                      score:
+                        type: integer
+                        minimum: 1
+                        maximum: 4
+                total_score:
+                  type: integer
+                  minimum: 5
+                  maximum: 20
+                risk_profile:
+                  type: string
+                  enum: [Conservative, Moderate, Moderately Aggressive, Aggressive]
+                recommendation:
+                  type: string
+      responses:
+        '201':
+          description: Risk assessment saved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  assessment:
+                    $ref: '#/components/schemas/RiskAssessment'
+        '400':
+          description: Validation error
+        '404':
+          description: User not found
+
+  /api/risk-assessment/{user_id}:
+    get:
+      tags:
+        - Risk Assessment
+      summary: Get risk assessment history
+      description: Get all risk assessments for a user
+      parameters:
+        - name: user_id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 10
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+      responses:
+        '200':
+          description: Risk assessments retrieved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  assessments:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/RiskAssessment'
+                  total:
+                    type: integer
+                  limit:
+                    type: integer
+                  offset:
+                    type: integer
+
+  /api/risk-assessment/{user_id}/latest:
+    get:
+      tags:
+        - Risk Assessment
+      summary: Get latest risk assessment
+      description: Get the most recent risk assessment for a user
+      parameters:
+        - name: user_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Latest risk assessment retrieved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  assessment:
+                    $ref: '#/components/schemas/RiskAssessment'
+        '404':
+          description: No risk assessment found
+
+  /api/goals/categories:
+    get:
+      tags:
+        - Goals
+      summary: Get goal categories
+      description: Get all available goal categories
+      responses:
+        '200':
+          description: Categories retrieved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  categories:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                        name:
+                          type: string
+                        icon:
+                          type: string
+                        is_active:
+                          type: boolean
+
+  /api/goals/user/{user_id}:
+    get:
+      tags:
+        - Goals
+      summary: Get user goals
+      description: Get all goals for a user with optional filters
+      parameters:
+        - name: user_id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [active, completed, paused, cancelled]
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+      responses:
+        '200':
+          description: Goals retrieved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  goals:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Goal'
+                  total:
+                    type: integer
+
+  /api/goals:
+    post:
+      tags:
+        - Goals
+      summary: Create a new goal
+      description: Create a new financial goal with automatic investment plan generation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - user_id
+                - category_id
+                - goal_name
+                - target_amount
+                - target_date
+              properties:
+                user_id:
+                  type: integer
+                category_id:
+                  type: integer
+                goal_name:
+                  type: string
+                  minLength: 3
+                  maxLength: 100
+                target_amount:
+                  type: number
+                  minimum: 100
+                target_date:
+                  type: string
+                  format: date
+                initial_amount:
+                  type: number
+                  minimum: 0
+                frequency:
+                  type: string
+                  enum: [monthly, weekly, daily]
+                monthly_amount:
+                  type: number
+                  minimum: 100
+      responses:
+        '201':
+          description: Goal created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+                  goal:
+                    $ref: '#/components/schemas/Goal'
+        '400':
+          description: Validation error
+        '404':
+          description: User not found
+
+  /api/goals/{goal_id}:
+    get:
+      tags:
+        - Goals
+      summary: Get goal details
+      description: Get complete details of a specific goal including investment plan
+      parameters:
+        - name: goal_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Goal details retrieved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  goal:
+                    allOf:
+                      - $ref: '#/components/schemas/Goal'
+                      - type: object
+                        properties:
+                          investment_plan:
+                            $ref: '#/components/schemas/InvestmentPlan'
+                          roundoff_setting:
+                            type: object
+        '404':
+          description: Goal not found
+    put:
+      tags:
+        - Goals
+      summary: Update goal
+      description: Update an existing goal
+      parameters:
+        - name: goal_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                goal_name:
+                  type: string
+                target_amount:
+                  type: number
+                target_date:
+                  type: string
+                  format: date
+                current_amount:
+                  type: number
+                status:
+                  type: string
+                  enum: [active, completed, paused, cancelled]
+      responses:
+        '200':
+          description: Goal updated
+        '400':
+          description: Validation error
+        '404':
+          description: Goal not found
+    delete:
+      tags:
+        - Goals
+      summary: Delete goal
+      description: Delete a goal (soft delete by setting status to cancelled)
+      parameters:
+        - name: goal_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Goal deleted
+        '404':
+          description: Goal not found
+
+  /api/investment-plan/generate:
+    post:
+      tags:
+        - Investment Plan
+      summary: Generate investment plan
+      description: Generate a personalized investment plan for a goal
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - user_id
+                - goal_id
+              properties:
+                user_id:
+                  type: integer
+                goal_id:
+                  type: integer
+                monthly_amount:
+                  type: number
+                frequency:
+                  type: string
+                  enum: [monthly, weekly, daily]
+      responses:
+        '201':
+          description: Investment plan generated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+                  plan:
+                    $ref: '#/components/schemas/InvestmentPlan'
+        '400':
+          description: Validation error
+        '404':
+          description: User or goal not found
+
+  /api/investment-plan/user/{userId}:
+    get:
+      tags:
+        - Investment Plan
+      summary: Get user investment plans
+      description: Get all investment plans for a user
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Investment plans retrieved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  plans:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/InvestmentPlan'
+
+  /api/investment-plan/auto-save:
+    put:
+      tags:
+        - Investment Plan
+      summary: Update auto-save configuration
+      description: Update auto-save settings for an investment plan
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - user_id
+                - goal_id
+              properties:
+                user_id:
+                  type: integer
+                goal_id:
+                  type: integer
+                frequency:
+                  type: string
+                  enum: [monthly, weekly, daily]
+                monthly_amount:
+                  type: number
+      responses:
+        '200':
+          description: Auto-save configuration updated
+        '400':
+          description: Validation error
+        '404':
+          description: Plan not found
+
+  /api/mutual-funds/recommendations/{user_id}:
+    get:
+      tags:
+        - Mutual Funds
+      summary: Get recommended mutual funds
+      description: Get personalized mutual fund recommendations based on user's risk profile
+      parameters:
+        - name: user_id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: horizon
+          in: query
+          schema:
+            type: string
+            enum: [short-term, long-term]
+            default: long-term
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 10
+            maximum: 20
+      responses:
+        '200':
+          description: Recommendations retrieved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  user_id:
+                    type: integer
+                  risk_profile:
+                    type: string
+                  investment_horizon:
+                    type: string
+                  recommendations:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/MutualFund'
+                  count:
+                    type: integer
+        '404':
+          description: User not found
+
+  /api/mutual-funds/search:
+    get:
+      tags:
+        - Mutual Funds
+      summary: Search mutual funds
+      description: Search for mutual funds by name
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema:
+            type: string
+          example: SBI Bluechip
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+            maximum: 50
+      responses:
+        '200':
+          description: Search results
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  query:
+                    type: string
+                  results:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        scheme_code:
+                          type: integer
+                        scheme_name:
+                          type: string
+                        category:
+                          type: string
+                        risk_level:
+                          type: string
+                  count:
+                    type: integer
+
+  /api/mutual-funds/scheme/{scheme_code}:
+    get:
+      tags:
+        - Mutual Funds
+      summary: Get scheme details
+      description: Get detailed information about a specific mutual fund scheme
+      parameters:
+        - name: scheme_code
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Scheme details retrieved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  scheme:
+                    type: object
+                    properties:
+                      scheme_code:
+                        type: integer
+                      scheme_name:
+                        type: string
+                      fund_house:
+                        type: string
+                      scheme_type:
+                        type: string
+                      scheme_category:
+                        type: string
+                      category:
+                        type: string
+                      risk_level:
+                        type: string
+                      returns:
+                        type: object
+                      latest_nav:
+                        type: number
+                      nav_history:
+                        type: array
+
+  /api/mutual-funds/best-performing:
+    get:
+      tags:
+        - Mutual Funds
+      summary: Get best performing funds
+      description: Get best performing mutual funds with optional filters
+      parameters:
+        - name: horizon
+          in: query
+          schema:
+            type: string
+            enum: [short-term, long-term]
+        - name: category
+          in: query
+          schema:
+            type: string
+        - name: risk_profile
+          in: query
+          schema:
+            type: string
+            enum: [Conservative, Moderate, Aggressive]
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 10
+            maximum: 20
+      responses:
+        '200':
+          description: Best performing funds retrieved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  filters:
+                    type: object
+                  funds:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/MutualFund'
+                  count:
+                    type: integer
+
+  /api/savings/roundoff:
+    post:
+      tags:
+        - Savings
+      summary: Set roundoff amount
+      description: Configure roundoff savings amount for a user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - user_id
+                - roundoff_amount
+              properties:
+                user_id:
+                  type: integer
+                roundoff_amount:
+                  type: integer
+                  minimum: 1
+                  example: 10
+                goal_id:
+                  type: integer
+      responses:
+        '200':
+          description: Roundoff amount set
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+                  setting:
+                    type: object
+        '400':
+          description: Validation error
+        '404':
+          description: User not found
+
+  /api/savings/roundoff/{user_id}:
+    get:
+      tags:
+        - Savings
+      summary: Get roundoff setting
+      description: Get user's roundoff savings configuration
+      parameters:
+        - name: user_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Roundoff setting retrieved
+    put:
+      tags:
+        - Savings
+      summary: Update roundoff setting
+      description: Update user's roundoff savings configuration
+      parameters:
+        - name: user_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                roundoff_amount:
+                  type: integer
+                goal_id:
+                  type: integer
+
+  /api/savings/upload:
+    post:
+      tags:
+        - Savings
+      summary: Upload bank statement
+      description: Upload and process bank statement PDF for roundoff savings calculation
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - user_id
+                - statement
+              properties:
+                user_id:
+                  type: integer
+                statement:
+                  type: string
+                  format: binary
+      responses:
+        '200':
+          description: Bank statement processed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+                  summary:
+                    type: object
+        '400':
+          description: Validation error or invalid PDF
+        '404':
+          description: User not found
+
+  /api/savings/summary/{user_id}:
+    get:
+      tags:
+        - Savings
+      summary: Get savings summary
+      description: Get user's savings summary including roundoff savings
+      parameters:
+        - name: user_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Savings summary retrieved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  summary:
+                    type: object
+
+  /api/notifications/user/{user_id}:
+    get:
+      tags:
+        - Notifications
+      summary: Get user notifications
+      description: Get all notifications for a user with optional filters
+      parameters:
+        - name: user_id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: is_read
+          in: query
+          schema:
+            type: boolean
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+      responses:
+        '200':
+          description: Notifications retrieved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  notifications:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Notification'
+                  total:
+                    type: integer
+                  unread_count:
+                    type: integer
+                  limit:
+                    type: integer
+                  offset:
+                    type: integer
+
+  /api/notifications/user/{user_id}/unread-count:
+    get:
+      tags:
+        - Notifications
+      summary: Get unread notification count
+      description: Get count of unread notifications for a user
+      parameters:
+        - name: user_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Unread count retrieved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user_id:
+                    type: integer
+                  unread_count:
+                    type: integer
+
+  /api/notifications/{notification_id}/read:
+    put:
+      tags:
+        - Notifications
+      summary: Mark notification as read
+      description: Mark a specific notification as read
+      parameters:
+        - name: notification_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Notification marked as read
+        '404':
+          description: Notification not found
+
+  /api/notifications/user/{user_id}/read-all:
+    put:
+      tags:
+        - Notifications
+      summary: Mark all notifications as read
+      description: Mark all notifications for a user as read
+      parameters:
+        - name: user_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: All notifications marked as read
+
+  /api/notifications/{notification_id}:
+    delete:
+      tags:
+        - Notifications
+      summary: Delete notification
+      description: Delete a specific notification
+      parameters:
+        - name: notification_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Notification deleted
+        '404':
+          description: Notification not found
+
+  /api/notifications/user/{user_id}:
+    delete:
+      tags:
+        - Notifications
+      summary: Delete all notifications
+      description: Delete all notifications for a user
+      parameters:
+        - name: user_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: All notifications deleted
+
+  /api/kyc/video-kyc/upload:
+    post:
+      tags:
+        - Video KYC
+      summary: Upload video KYC
+      description: Upload a video for KYC verification
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - user_id
+                - video
+              properties:
+                user_id:
+                  type: integer
+                video:
+                  type: string
+                  format: binary
+      responses:
+        '201':
+          description: Video uploaded successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+                  kyc_id:
+                    type: integer
+                  status:
+                    type: string
+                  video_url:
+                    type: string
+        '400':
+          description: Validation error
+        '404':
+          description: User not found
+
+  /api/kyc/video-kyc/status/{kyc_id}:
+    get:
+      tags:
+        - Video KYC
+      summary: Get video KYC status
+      description: Get the status of a video KYC submission
+      parameters:
+        - name: kyc_id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: user_id
+          in: query
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: KYC status retrieved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  kyc:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      user_id:
+                        type: integer
+                      status:
+                        type: string
+                        enum: [pending, approved, rejected]
+                      video_url:
+                        type: string
+                      rejection_reason:
+                        type: string
+        '404':
+          description: KYC submission not found
+
+  /api/kyc/video-kyc/user/{user_id}/latest:
+    get:
+      tags:
+        - Video KYC
+      summary: Get latest video KYC
+      description: Get the most recent video KYC submission for a user
+      parameters:
+        - name: user_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Latest KYC retrieved
+        '404':
+          description: No KYC submission found
+
+  /api/invest/profile/{user_id}:
+    get:
+      tags:
+        - Invest
+      summary: Get investment profile
+      description: Get user's investment profile
+      parameters:
+        - name: user_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Investment profile retrieved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  profile:
+                    type: object
+                    nullable: true
+    post:
+      tags:
+        - Invest
+      summary: Create or update investment profile
+      description: Create or update user's investment profile
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - user_id
+                - risk_profile
+              properties:
+                user_id:
+                  type: integer
+                risk_profile:
+                  type: string
+                  enum: [Conservative, Moderate, Aggressive]
+                investment_preference:
+                  type: string
+                auto_invest_enabled:
+                  type: boolean
+      responses:
+        '200':
+          description: Investment profile saved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+                  profile:
+                    type: object
+
+components:
+  schemas:
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+        errors:
+          type: array
+          items:
+            type: object
+            properties:
+              field:
+                type: string
+              msg:
+                type: string
+    Success:
+      type: object
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+    User:
+      type: object
+      properties:
+        id:
+          type: integer
+        username:
+          type: string
+        email:
+          type: string
+        first_name:
+          type: string
+        last_name:
+          type: string
+        account_number:
+          type: string
+        account_balance:
+          type: number
+    UserProfile:
+      type: object
+      properties:
+        id:
+          type: integer
+        username:
+          type: string
+        personal_info:
+          type: object
+        address:
+          type: object
+        financial_info:
+          type: object
+        kyc_info:
+          type: object
+    Goal:
+      type: object
+      properties:
+        id:
+          type: integer
+        user_id:
+          type: integer
+        category_id:
+          type: integer
+        goal_name:
+          type: string
+        target_amount:
+          type: number
+        current_amount:
+          type: number
+        target_date:
+          type: string
+          format: date
+        status:
+          type: string
+          enum: [active, completed, paused, cancelled]
+        progress_percentage:
+          type: number
+        days_remaining:
+          type: integer
+        monthly_savings_needed:
+          type: number
+    InvestmentPlan:
+      type: object
+      properties:
+        id:
+          type: integer
+        user_id:
+          type: integer
+        goal_id:
+          type: integer
+        risk_profile:
+          type: string
+        risk_profile_display:
+          type: string
+        auto_save:
+          type: object
+          properties:
+            frequency:
+              type: string
+              enum: [daily, weekly, monthly]
+            monthly_amount:
+              type: number
+            weekly_amount:
+              type: number
+            daily_amount:
+              type: number
+            duration_months:
+              type: integer
+        portfolio:
+          type: object
+          properties:
+            description:
+              type: string
+            allocations:
+              type: array
+              items:
+                type: object
+        status:
+          type: string
+    Notification:
+      type: object
+      properties:
+        id:
+          type: integer
+        user_id:
+          type: integer
+        type:
+          type: string
+        title:
+          type: string
+        message:
+          type: string
+        data:
+          type: object
+        is_read:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+        read_at:
+          type: string
+          format: date-time
+    RiskAssessment:
+      type: object
+      properties:
+        id:
+          type: integer
+        user_id:
+          type: integer
+        total_score:
+          type: integer
+        risk_profile:
+          type: string
+          enum: [Conservative, Moderate, Moderately Aggressive, Aggressive]
+        recommendation:
+          type: string
+        completed_at:
+          type: string
+          format: date-time
+        answers:
+          type: array
+          items:
+            type: object
+            properties:
+              question_id:
+                type: integer
+              option_id:
+                type: string
+              answer_text:
+                type: string
+              score:
+                type: integer
+    MutualFund:
+      type: object
+      properties:
+        scheme_code:
+          type: integer
+        scheme_name:
+          type: string
+        category:
+          type: string
+        sub_category:
+          type: string
+        risk_level:
+          type: string
+        returns:
+          type: object
+        latest_nav:
+          type: number
+        suitability:
+          type: string
+

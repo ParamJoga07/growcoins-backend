@@ -1,5 +1,7 @@
 const express = require('express');
 const cors = require('cors');
+const swaggerUi = require('swagger-ui-express');
+const swaggerSpec = require('./config/swagger');
 require('dotenv').config();
 
 const app = express();
@@ -43,6 +45,19 @@ app.use('/api/mutual-funds', require('./routes/mutualFunds'));
 app.use('/api/notifications', require('./routes/notifications'));
 app.use('/api/investment-plan', require('./routes/investmentPlan'));
 app.use('/api/kyc/video-kyc', require('./routes/videoKyc'));
+
+// Swagger UI
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
+  customCss: '.swagger-ui .topbar { display: none }',
+  customSiteTitle: 'Growcoins API Documentation',
+  explorer: true
+}));
+
+// Swagger JSON endpoint
+app.get('/api-docs.json', (req, res) => {
+  res.setHeader('Content-Type', 'application/json');
+  res.send(swaggerSpec);
+});
 
 // Serve uploaded files statically
 app.use('/uploads', express.static('uploads'));
