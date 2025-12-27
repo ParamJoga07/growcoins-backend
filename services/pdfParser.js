@@ -18,13 +18,21 @@ async function parseBankStatement(pdfBuffer) {
     );
     console.log("\n=== Starting transaction extraction ===\n");
 
-    // Try SBI format first (check for specific SBI headers)
-    if (
-      text.includes("Account Statement") &&
-      text.includes("Txn Date") &&
-      text.includes("Value Date")
-    ) {
-      console.log("Detected SBI bank statement format");
+    // Try SBI format first (check for specific SBI headers and patterns)
+    // Note: Headers might be split across lines, so check for key patterns
+    const isSBI =
+      (text.includes("Account Statement") ||
+        text.includes("ACCOUNT STATEMENT")) &&
+      (text.includes("Txn Date") ||
+        text.includes("TXN DATE") ||
+        (text.includes("Txn Date Value") &&
+          text.includes("Date Description")) ||
+        text.includes("IFS Code :SBIN") || // SBI IFS code pattern
+        text.includes("State Bank of India") ||
+        text.includes("SBI"));
+
+    if (isSBI) {
+      console.log("✅ Detected SBI bank statement format");
       const transactions = extractSBITransactions(text);
       console.log(`SBI extraction found: ${transactions.length} transactions`);
       if (transactions.length > 0) {
@@ -87,161 +95,238 @@ async function parseBankStatement(pdfBuffer) {
 }
 
 /**
- * Extract transactions from SBI Bank statement format
+ * Extract transactions from SBI Bank statement format - FIXED VERSION
+ *
+ * This parser handles:
+ * 1. Dates and amounts on different lines
+ * 2. Dates split across multiple lines (e.g., "15 Apr" on one line, "2024" on next)
+ * 3. Amounts on the same line as description
+ * 4. Various transfer patterns: "TO TRANSFER", "TRANSFER TO", "transfered", "transferto"
+ *
  * Format: Txn Date | Value Date | Description | Ref No. | Debit | Credit | Balance
  */
 function extractSBITransactions(text) {
   const transactions = [];
   const lines = text.split("\n");
 
-  console.log("Scanning for SBI format transactions...");
+  console.log("🔍 Scanning for SBI format transactions...");
+  console.log(`📄 Total lines: ${lines.length}\n`);
 
-  // SBI date format: "4 Apr 2024" or "30 Apr 2024" (DD Mon YYYY)
-  const sbiDatePattern =
+  // Patterns
+  const fullDatePattern =
     /^(\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{4})/i;
+  const partialDatePattern =
+    /^(\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec))$/i;
+  const yearPattern = /^(\d{4})\s*$/;
+  const amountPattern = /(\d{1,3}(?:,\d{2,3})*\.\d{2})/g;
 
-  for (let i = 0; i < lines.length; i++) {
+  let i = 0;
+  let transactionCount = 0;
+
+  while (i < lines.length) {
     const line = lines[i].trim();
-    if (!line) continue;
 
-    // Check if line starts with a date
-    const dateMatch = line.match(sbiDatePattern);
-    if (!dateMatch) continue;
+    // Check for full date on one line or partial date
+    const fullDateMatch = line.match(fullDatePattern);
+    const partialDateMatch = !fullDateMatch
+      ? line.match(partialDatePattern)
+      : null;
 
-    const transactionDate = dateMatch[1];
+    let transactionDate = null;
+    const startIndex = i;
 
-    // SBI format has two dates at the start, then description, then amounts
-    // Example: "4 Apr 2024 4 Apr 2024 TO TRANSFER- INR... 1,180.00 62,780.51"
+    if (fullDateMatch) {
+      // Full date on one line
+      transactionDate = fullDateMatch[1];
+    } else if (partialDateMatch) {
+      // Partial date - check if next line has year
+      const partialDate = partialDateMatch[1];
 
-    // Split line into parts
-    const parts = line.split(/\s{2,}/); // Split by 2+ spaces
-
-    // Try to find amounts in the line
-    // Amounts can be: 52,350.00 or 1,96,760.96 (Indian number format)
-    const amountPattern = /(\d{1,3}(?:,\d{2,3})*\.\d{2})/g;
-    const amounts = [];
-    let match;
-
-    while ((match = amountPattern.exec(line)) !== null) {
-      const amount = parseFloat(match[1].replace(/,/g, ""));
-      if (amount > 0 && amount < 100000000) {
-        // Reasonable limit
-        amounts.push(amount);
-      }
-    }
-
-    // SBI statements have: Debit, Credit, Balance (last 3 amounts)
-    // If 3+ amounts: debit=amounts[-3], credit=amounts[-2], balance=amounts[-1]
-    // If 2 amounts: could be debit+balance OR credit+balance
-    // If 1 amount: it's the balance only
-
-    if (amounts.length === 0) continue;
-
-    // Extract description - it's between the two dates and before the amounts
-    let description = line;
-    // Remove dates
-    description = description.replace(sbiDatePattern, "").trim();
-    description = description.replace(sbiDatePattern, "").trim();
-    // Remove all amounts
-    amounts.forEach((amt) => {
-      const amtStr = amt.toLocaleString("en-IN", {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2,
-      });
-      description = description.replace(amtStr, "");
-    });
-    description = description.replace(/\s+/g, " ").trim();
-
-    // Determine if it's a debit (withdrawal) or credit (deposit)
-    let debitAmount = 0;
-    let creditAmount = 0;
-
-    const lowerLine = line.toLowerCase();
-    const lowerDesc = description.toLowerCase();
-
-    // Check keywords to determine transaction type
-    const isDebit =
-      lowerDesc.includes("to transfer") ||
-      lowerDesc.includes("forex txn-commission") ||
-      lowerDesc.includes("forex txn-service") ||
-      lowerDesc.includes("charges") ||
-      lowerDesc.includes("withdrawal");
-
-    const isCredit =
-      lowerDesc.includes("by transfer") ||
-      lowerDesc.includes("deposit") ||
-      lowerDesc.includes("credit");
-
-    // Extract debit amount based on position
-    if (amounts.length >= 3) {
-      // Standard format: debit, credit, balance
-      const possibleDebit = amounts[amounts.length - 3];
-      const possibleCredit = amounts[amounts.length - 2];
-
-      // If keyword says debit, use first of last 3
-      if (isDebit) {
-        debitAmount = possibleDebit;
-      } else if (isCredit) {
-        creditAmount = possibleCredit;
-      } else {
-        // Guess based on context - "TO" usually means debit, "BY" means credit
-        if (lowerDesc.startsWith("to ") || lowerDesc.includes(" to ")) {
-          debitAmount = possibleDebit;
-        } else if (lowerDesc.startsWith("by ") || lowerDesc.includes(" by ")) {
-          creditAmount = possibleCredit;
-        }
-      }
-    } else if (amounts.length === 2) {
-      // Two amounts: likely debit/credit + balance
-      if (isDebit) {
-        debitAmount = amounts[0];
-      } else if (isCredit) {
-        creditAmount = amounts[0];
-      } else {
-        // Default: if "TO", it's debit
-        if (lowerDesc.startsWith("to ") || lowerDesc.includes(" to ")) {
-          debitAmount = amounts[0];
+      if (i + 1 < lines.length) {
+        const nextLine = lines[i + 1].trim();
+        const yearMatch = nextLine.match(yearPattern);
+        if (yearMatch) {
+          const year = yearMatch[1];
+          transactionDate = `${partialDate} ${year}`;
+          i++; // Skip the year line
         }
       }
     }
 
-    // Only process debits (withdrawals)
-    if (debitAmount > 0) {
-      // Clean up description
-      description = description
-        .replace(/^TO TRANSFER-?/i, "Transfer to ")
-        .replace(/^Forex Txn-/i, "Forex Transaction - ")
-        .replace(/\s+/g, " ")
-        .trim();
+    if (transactionDate) {
+      // Skip header rows
+      if (
+        line.includes("Debit") &&
+        line.includes("Credit") &&
+        line.includes("Balance")
+      ) {
+        i++;
+        continue;
+      }
 
-      if (!description) description = "Withdrawal";
+      transactionCount++;
+      console.log(`\n${"=".repeat(80)}`);
+      console.log(`🔍 Transaction #${transactionCount} at line ${startIndex}`);
+      console.log(`📅 Date: ${transactionDate}`);
 
-      try {
-        const parsedDate = parseSBIDate(transactionDate);
-        console.log(
-          `Found debit: ${
-            parsedDate.toISOString().split("T")[0]
-          } - ₹${debitAmount.toFixed(2)} - ${description.substring(0, 40)}`
-        );
+      // Collect description and look for amounts in next ~15 lines
+      const descriptionLines = [];
+      let amounts = [];
+      let amountLineNum = null;
 
-        transactions.push({
-          date: parsedDate,
-          description: description,
-          amount: debitAmount,
-          type: "withdrawal",
+      for (let j = i + 1; j < Math.min(i + 15, lines.length); j++) {
+        const nextLine = lines[j].trim();
+
+        // Stop if we hit another transaction date
+        if (nextLine.match(fullDatePattern) && !nextLine.includes("Txn Date")) {
+          break;
+        }
+        if (nextLine.match(partialDatePattern)) {
+          break;
+        }
+
+        // Check for amounts
+        const matches = nextLine.match(amountPattern);
+        if (matches && matches.length > 0) {
+          const validAmounts = matches
+            .map((a) => parseFloat(a.replace(/,/g, "")))
+            .filter((a) => a >= 1.0); // Filter out small amounts
+
+          if (validAmounts.length > 0 && amounts.length === 0) {
+            amounts = validAmounts;
+            amountLineNum = j;
+            console.log(
+              `💰 Amounts found on line ${j}: ${amounts
+                .map((a) => `₹${a.toFixed(2)}`)
+                .join(", ")}`
+            );
+            descriptionLines.push(nextLine);
+            break;
+          }
+        }
+
+        // Add to description
+        if (nextLine && !nextLine.includes("Txn Date")) {
+          descriptionLines.push(nextLine);
+        }
+      }
+
+      // Build description
+      let description = descriptionLines.join(" ");
+
+      // Remove amounts from description
+      amounts.forEach((amt) => {
+        const amtFormatted = amt.toLocaleString("en-IN", {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
         });
-      } catch (e) {
-        console.log(`Error parsing date "${transactionDate}":`, e.message);
+        description = description.replace(amtFormatted, "");
+      });
+
+      description = description.replace(/\s+/g, " ").trim();
+
+      console.log(`📝 Description: ${description.substring(0, 80)}`);
+
+      if (amounts.length === 0) {
+        console.log("❌ No amounts found, skipping");
+        i++;
+        continue;
       }
-    } else if (creditAmount > 0) {
+
       console.log(
-        `Skipping credit: ${description.substring(
-          0,
-          50
-        )}... (₹${creditAmount.toFixed(2)})`
+        `✅ Amounts: ${amounts.map((a) => `₹${a.toFixed(2)}`).join(", ")}`
       );
+
+      // Determine transaction type - FIXED LOGIC
+      const lowerDesc = description.toLowerCase();
+
+      const isDebit =
+        lowerDesc.includes("to transfer") ||
+        lowerDesc.includes("transfer to") || // FIXED: Catches "TRANSFER TO" pattern
+        lowerDesc.includes("transfered") || // FIXED: Catches typo "transfered"
+        lowerDesc.includes("transferto") || // FIXED: Catches "transferto" (no space)
+        lowerDesc.includes("transaction comm") || // FIXED: Transaction commission
+        lowerDesc.includes("forex txn-commission") ||
+        lowerDesc.includes("forex txn-service") ||
+        lowerDesc.includes("charges");
+
+      const isCredit =
+        lowerDesc.includes("by transfer") ||
+        lowerDesc.startsWith("by ") ||
+        lowerDesc.includes("deposit");
+
+      console.log(
+        `🏷️  Type: ${isDebit ? "DEBIT" : isCredit ? "CREDIT" : "UNKNOWN"}`
+      );
+
+      // Extract debit amount
+      let debitAmount = 0;
+
+      if (amounts.length >= 2) {
+        // Two or more amounts: first is transaction, last is balance
+        if (isDebit) {
+          debitAmount = amounts[0];
+          console.log(`✅ WITHDRAWAL: ₹${debitAmount.toFixed(2)}`);
+        } else if (isCredit) {
+          console.log(`⏭️  CREDIT (skipping): ₹${amounts[0].toFixed(2)}`);
+        }
+      } else if (amounts.length === 1) {
+        // Single amount - might be transaction or balance
+        if (isDebit) {
+          // Check if it's clearly a charge/fee
+          if (
+            lowerDesc.includes("commission") ||
+            lowerDesc.includes("service") ||
+            lowerDesc.includes("charge") ||
+            lowerDesc.includes("fee")
+          ) {
+            debitAmount = amounts[0];
+            console.log(
+              `✅ WITHDRAWAL (fee/charge): ₹${debitAmount.toFixed(2)}`
+            );
+          }
+        }
+      }
+
+      // Add to transactions if it's a debit
+      if (debitAmount > 0) {
+        try {
+          const parsedDate = parseSBIDate(transactionDate);
+
+          // Clean up description
+          let cleanDesc = description
+            .replace(/^TO TRANSFER-?/i, "Transfer to ")
+            .replace(/^Forex Txn-/i, "Forex Transaction - ")
+            .replace(/\s+/g, " ")
+            .trim();
+
+          if (!cleanDesc) cleanDesc = "Withdrawal";
+
+          transactions.push({
+            date: parsedDate,
+            description: cleanDesc.substring(0, 200),
+            amount: debitAmount,
+            type: "withdrawal",
+          });
+
+          console.log(`✅ Added withdrawal transaction`);
+        } catch (e) {
+          console.log(
+            `❌ Error parsing date "${transactionDate}": ${e.message}`
+          );
+        }
+      }
+
+      // Move to line after amounts
+      i = amountLineNum ? amountLineNum + 1 : i + 1;
+    } else {
+      i++;
     }
   }
+
+  console.log(`\n${"=".repeat(80)}`);
+  console.log(`📊 Total withdrawal transactions found: ${transactions.length}`);
+  console.log("=".repeat(80));
 
   return transactions;
 }
